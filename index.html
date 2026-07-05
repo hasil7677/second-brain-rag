@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>OKF Pipeline — Live Demo</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+/* ── shared nav ── */
+.okf-nav{background:#0d1524;border-bottom:1px solid #1e2d42;padding:0 28px;display:flex;align-items:center;gap:0;height:46px;position:sticky;top:0;z-index:100}
+.okf-nav-logo{font-family:var(--mono);font-size:11px;font-weight:700;color:#00c2ff;margin-right:28px;white-space:nowrap}
+.okf-nav-logo span{color:#556070}
+.okf-nav a{font-family:var(--mono);font-size:10px;color:#8899aa;text-decoration:none;padding:0 14px;height:46px;display:flex;align-items:center;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
+.okf-nav a:hover{color:#e8edf5}
+.okf-nav a.active{color:#00e5a0;border-bottom-color:#00e5a0}
+</style>
+<style>
+  :root {
+    --bg:#0b1120;--s1:#111827;--s2:#1a2332;--border:#1e2d42;
+    --text:#e8edf5;--muted:#8899aa;--muted2:#556070;
+    --green:#00e5a0;--accent:#00c2ff;--amber:#f5a623;
+    --danger:#ff3b5c;--purple:#9b6dff;
+    --mono:'JetBrains Mono','Fira Code',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh}
+
+  /* ── header ── */
+  .header{padding:20px 32px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;background:var(--s1)}
+  .logo{font-family:var(--mono);font-size:14px;font-weight:700;color:var(--accent)}
+  .logo span{color:var(--muted)}
+  .pipeline-steps{display:flex;gap:6px;align-items:center}
+  .step-badge{font-family:var(--mono);font-size:9px;padding:4px 10px;border-radius:20px;border:1px solid;letter-spacing:.06em}
+  .step-badge.ingest{color:var(--green);border-color:rgba(0,229,160,.3);background:rgba(0,229,160,.07)}
+  .step-badge.route{color:var(--accent);border-color:rgba(0,194,255,.3);background:rgba(0,194,255,.07)}
+  .step-badge.retrieve{color:var(--amber);border-color:rgba(245,166,35,.3);background:rgba(245,166,35,.07)}
+  .step-badge.enrich{color:var(--purple);border-color:rgba(155,109,255,.3);background:rgba(155,109,255,.07)}
+  .step-badge.generate{color:var(--danger);border-color:rgba(255,59,92,.3);background:rgba(255,59,92,.07)}
+  .step-arrow{color:var(--muted2);font-size:10px}
+
+  /* ── layout ── */
+  .layout{display:grid;grid-template-columns:320px 1fr 360px;height:calc(100vh - 103px);overflow:hidden}
+
+  /* ── left panel ── */
+  .left-panel{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--s1)}
+  .panel-header{padding:14px 16px;border-bottom:1px solid var(--border);font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.08em;display:flex;justify-content:space-between;align-items:center}
+  .ingest-controls{padding:16px;border-bottom:1px solid var(--border)}
+  .btn{font-family:var(--mono);font-size:11px;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;transition:all .15s}
+  .btn-primary{background:var(--green);color:#000;font-weight:700;width:100%}
+  .btn-primary:hover{background:#00ffb3}
+  .btn-primary:disabled{opacity:.5;cursor:not-allowed}
+  .doc-cards{padding:12px 16px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--border)}
+  .doc-card{padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2);transition:border-color .2s}
+  .doc-card.active{border-color:rgba(0,229,160,.4)}
+  .doc-card-name{font-family:var(--mono);font-size:9px;color:var(--muted);margin-bottom:4px}
+  .doc-card-label{font-size:11px;color:var(--text);font-weight:600;margin-bottom:4px}
+  .doc-card-count{font-family:var(--mono);font-size:9px;color:var(--green)}
+  .log-area{flex:1;overflow-y:auto;padding:12px 16px}
+  .log-entry{font-family:var(--mono);font-size:9px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03);line-height:1.5}
+  .log-entry.concept{color:var(--green)}
+  .log-entry.edge{color:var(--purple)}
+  .log-entry.doc{color:var(--accent)}
+  .log-entry.done{color:var(--amber);font-weight:700}
+  .log-entry.err{color:var(--danger)}
+
+  /* ── stats bar ── */
+  .stats-bar{padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:16px;background:var(--s2)}
+  .stat{text-align:center}
+  .stat-val{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--accent)}
+  .stat-label{font-family:var(--mono);font-size:8px;color:var(--muted2)}
+
+  /* ── center graph ── */
+  .graph-panel{position:relative;overflow:hidden;background:var(--bg)}
+  .graph-overlay{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:10}
+  .graph-title{font-family:var(--mono);font-size:10px;color:var(--muted);background:rgba(11,17,32,.8);padding:6px 10px;border-radius:6px;border:1px solid var(--border)}
+  .legend{background:rgba(11,17,32,.85);padding:8px 12px;border-radius:6px;border:1px solid var(--border);display:flex;flex-direction:column;gap:4px;pointer-events:all}
+  .legend-item{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:8px;color:var(--muted)}
+  .legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .legend-line{width:16px;height:2px;flex-shrink:0}
+  #graph-svg{width:100%;height:100%}
+
+  /* node tooltip */
+  .node-tooltip{position:absolute;background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:12px 14px;font-size:11px;max-width:260px;pointer-events:none;z-index:20;display:none;box-shadow:0 4px 20px rgba(0,0,0,.4)}
+  .node-tooltip-title{font-family:var(--mono);color:var(--accent);font-size:10px;font-weight:700;margin-bottom:4px}
+  .node-tooltip-type{font-family:var(--mono);font-size:8px;color:var(--muted2);margin-bottom:6px}
+  .node-tooltip-body{color:var(--muted);line-height:1.6;font-size:10px}
+  .node-tooltip-tags{margin-top:6px;display:flex;flex-wrap:wrap;gap:3px}
+  .tag-chip{font-family:var(--mono);font-size:7px;padding:2px 5px;background:rgba(0,194,255,.1);color:var(--accent);border-radius:3px;border:1px solid rgba(0,194,255,.2)}
+
+  /* ── right panel ── */
+  .right-panel{border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;background:var(--s1)}
+  .query-input-area{padding:16px;border-bottom:1px solid var(--border)}
+  .query-input{width:100%;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:var(--mono);font-size:11px;padding:10px 12px;resize:none;height:72px;line-height:1.5}
+  .query-input:focus{outline:none;border-color:rgba(0,194,255,.4)}
+  .query-actions{display:flex;gap:8px;margin-top:8px}
+  .btn-query{background:var(--accent);color:#000;font-weight:700;font-family:var(--mono);font-size:11px;padding:8px 16px;border-radius:6px;border:none;cursor:pointer;flex:1}
+  .btn-query:hover{background:#22d3ff}
+  .btn-query:disabled{opacity:.5;cursor:not-allowed}
+  .btn-reset{background:transparent;border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:11px;padding:8px 12px;border-radius:6px;cursor:pointer}
+  .btn-reset:hover{border-color:var(--muted)}
+
+  /* sample chips */
+  .sample-chips{padding:10px 16px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:4px}
+  .chip-label{font-family:var(--mono);font-size:8px;color:var(--muted2);margin-bottom:2px}
+  .chip{font-size:9px;color:var(--muted);padding:4px 8px;border:1px solid var(--border);border-radius:4px;cursor:pointer;background:var(--s2);line-height:1.4;transition:border-color .15s}
+  .chip:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* pipeline steps display */
+  .pipeline-display{flex:1;overflow-y:auto;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+  .pipe-step{padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--s2)}
+  .pipe-step.active{border-color:rgba(0,194,255,.4);background:rgba(0,194,255,.04)}
+  .pipe-step.done-green{border-color:rgba(0,229,160,.35);background:rgba(0,229,160,.04)}
+  .pipe-step.done-amber{border-color:rgba(245,166,35,.35);background:rgba(245,166,35,.04)}
+  .pipe-step.done-purple{border-color:rgba(155,109,255,.35);background:rgba(155,109,255,.04)}
+  .pipe-step-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .pipe-step-icon{font-size:14px}
+  .pipe-step-name{font-family:var(--mono);font-size:10px;font-weight:700}
+  .pipe-step-detail{font-size:10px;color:var(--muted);line-height:1.5}
+  .pipe-step-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .source-chip{font-family:var(--mono);font-size:8px;padding:2px 7px;border-radius:3px}
+
+  /* answer box */
+  .answer-box{padding:12px 14px;border-radius:8px;border:1px solid rgba(0,229,160,.3);background:rgba(0,229,160,.04);font-size:11px;color:var(--text);line-height:1.7;margin-top:4px}
+  .answer-label{font-family:var(--mono);font-size:9px;color:var(--green);margin-bottom:6px;letter-spacing:.06em}
+
+  /* metrics */
+  .metrics-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .metric{font-family:var(--mono);font-size:8px;padding:3px 7px;border-radius:3px;background:rgba(255,255,255,.05);color:var(--muted)}
+
+  /* scrollbar */
+  ::-webkit-scrollbar{width:4px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+  /* pulse */
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .pulsing{animation:pulse 1.2s ease-in-out infinite}
+</style>
+</head>
+<body>
+<nav class="okf-nav">
+  <div class="okf-nav-logo">OKF <span>/ pipeline</span></div>
+  <a href="/">Explainer</a>
+  <a href="/pipeline" class="active">Live Pipeline</a>
+  <a href="/graph">Corpus Graph</a>
+</nav>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="logo">OKF Pipeline <span>/ second brain for agents</span></div>
+  <div class="pipeline-steps">
+    <span class="step-badge ingest">① INGEST</span>
+    <span class="step-arrow">→</span>
+    <span class="step-badge route">② ROUTE</span>
+    <span class="step-arrow">→</span>
+    <span class="step-badge retrieve">③ RETRIEVE</span>
+    <span class="step-arrow">→</span>
+    <span class="step-badge enrich">④ ENRICH</span>
+    <span class="step-arrow">→</span>
+    <span class="step-badge generate">⑤ GENERATE</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT: INGEST PANEL -->
+  <div class="left-panel">
+    <div class="panel-header">
+      <span>KNOWLEDGE INGESTION</span>
+      <span id="corpus-badge" style="color:var(--muted2);font-size:9px">no corpus</span>
+    </div>
+
+    <div class="ingest-controls">
+      <button class="btn btn-primary" id="ingest-btn" onclick="startIngest()">▶ Ingest Source Documents</button>
+    </div>
+
+    <div class="doc-cards" id="doc-cards">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted2)">Source documents will appear here after ingestion starts.</div>
+    </div>
+
+    <div class="panel-header" style="padding:10px 16px">
+      <span>INGESTION LOG</span>
+      <span id="log-count" style="color:var(--muted2);font-size:9px">0 events</span>
+    </div>
+    <div class="log-area" id="log-area"></div>
+
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-val" id="stat-nodes">0</div><div class="stat-label">CONCEPTS</div></div>
+      <div class="stat"><div class="stat-val" id="stat-edges">0</div><div class="stat-label">EDGES</div></div>
+      <div class="stat"><div class="stat-val" id="stat-cross">0</div><div class="stat-label">CROSS-DOC</div></div>
+      <div class="stat"><div class="stat-val" id="stat-docs">0</div><div class="stat-label">DOCS</div></div>
+    </div>
+  </div>
+
+  <!-- CENTER: KNOWLEDGE GRAPH -->
+  <div class="graph-panel">
+    <div class="graph-overlay">
+      <div class="graph-title" id="graph-title">Knowledge Graph — run ingestion to build</div>
+      <div class="legend">
+        <div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-bottom:4px">NODE TYPE</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div>underwriting rule</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>claims procedure</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--danger)"></div>risk framework</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>product coverage</div>
+        <div style="font-family:var(--mono);font-size:8px;color:var(--muted2);margin-top:6px;margin-bottom:4px">EDGE TYPE</div>
+        <div class="legend-item"><div class="legend-line" style="background:rgba(155,109,255,.6);border-top:1px dashed rgba(155,109,255,.6)"></div>wikilink</div>
+        <div class="legend-item"><div class="legend-line" style="background:var(--amber)"></div>cross-doc</div>
+        <div class="legend-item"><div class="legend-line" style="background:#fff"></div>enrichment</div>
+      </div>
+    </div>
+    <svg id="graph-svg"></svg>
+    <div class="node-tooltip" id="node-tooltip">
+      <div class="node-tooltip-title" id="tt-title"></div>
+      <div class="node-tooltip-type" id="tt-type"></div>
+      <div class="node-tooltip-body" id="tt-body"></div>
+      <div class="node-tooltip-tags" id="tt-tags"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT: QUERY PANEL -->
+  <div class="right-panel">
+    <div class="panel-header">
+      <span>QUERY PIPELINE</span>
+      <span id="query-status" style="color:var(--muted2);font-size:9px">idle</span>
+    </div>
+
+    <div class="query-input-area">
+      <textarea class="query-input" id="query-input" placeholder="Ask anything about the ingested documents...">Can we write flood cover for a Zone 2 property?</textarea>
+      <div class="query-actions">
+        <button class="btn-query" id="query-btn" onclick="runQuery()">▶ Run Pipeline</button>
+        <button class="btn-reset" onclick="resetQuery()">↺</button>
+      </div>
+    </div>
+
+    <div class="sample-chips">
+      <div class="chip-label">SAMPLE QUESTIONS</div>
+      <div class="chip" onclick="setQuery(this)">What triggers an automatic declination?</div>
+      <div class="chip" onclick="setQuery(this)">When must a loss adjustor be appointed?</div>
+      <div class="chip" onclick="setQuery(this)">What perils are absolutely excluded?</div>
+      <div class="chip" onclick="setQuery(this)">How does the co-insurance clause work?</div>
+    </div>
+
+    <div class="pipeline-display" id="pipeline-display">
+      <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);text-align:center;padding:20px 0">
+        Run a query to see the pipeline in action.<br/>Each stage will appear here.
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// GRAPH STATE
+// ══════════════════════════════════════════════════════
+const API = '';
+let nodes = [], links = [];
+let simulation, svg, gLinks, gNodes;
+let nodeMap = {};
+let logCount = 0;
+let docCounts = {};
+const SOURCE_COLORS = {
+  underwriting_guidelines: '#00c2ff',
+  claims_handling_sop:     '#00e5a0',
+  flood_risk_framework:    '#ff3b5c',
+  product_disclosure_statement: '#f5a623',
+};
+const TYPE_COLORS = {
+  underwriting_rule:  '#00c2ff',
+  claims_procedure:   '#00e5a0',
+  risk_framework:     '#ff3b5c',
+  product_coverage:   '#f5a623',
+  concept:            '#9b6dff',
+};
+
+function nodeColor(d) {
+  return TYPE_COLORS[d.type] || '#9b6dff';
+}
+
+// ══════════════════════════════════════════════════════
+// D3 GRAPH INIT
+// ══════════════════════════════════════════════════════
+function initGraph() {
+  const el = document.getElementById('graph-svg');
+  const W = el.clientWidth, H = el.clientHeight;
+
+  svg = d3.select('#graph-svg');
+  svg.selectAll('*').remove();
+
+  const defs = svg.append('defs');
+  // arrow markers
+  ['wikilink','cross_doc','enrichment'].forEach(type => {
+    const color = type === 'wikilink' ? '#9b6dff' : type === 'cross_doc' ? '#f5a623' : '#ffffff';
+    defs.append('marker').attr('id', `arrow-${type}`)
+      .attr('viewBox','0 -4 8 8').attr('refX',18).attr('refY',0)
+      .attr('markerWidth',6).attr('markerHeight',6).attr('orient','auto')
+      .append('path').attr('d','M0,-4L8,0L0,4').attr('fill', color).attr('opacity',.6);
+  });
+
+  const g = svg.append('g');
+
+  // zoom
+  svg.call(d3.zoom().scaleExtent([.2, 3]).on('zoom', e => g.attr('transform', e.transform)));
+
+  gLinks = g.append('g').attr('class','links');
+  gNodes = g.append('g').attr('class','nodes');
+
+  simulation = d3.forceSimulation()
+    .force('link', d3.forceLink().id(d => d.id).distance(90).strength(.4))
+    .force('charge', d3.forceManyBody().strength(-220))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collision', d3.forceCollide(22));
+}
+
+function updateGraph() {
+  if (!simulation) initGraph();
+
+  const linkSel = gLinks.selectAll('line').data(links, d => d.source + '-' + d.target);
+  linkSel.exit().remove();
+  linkSel.enter().append('line')
+    .attr('stroke', d => d.type === 'wikilink' ? 'rgba(155,109,255,.45)' : d.type === 'cross_doc' ? 'rgba(245,166,35,.6)' : 'rgba(255,255,255,.8)')
+    .attr('stroke-width', d => d.type === 'cross_doc' ? 1.5 : d.type === 'enrichment' ? 2 : 1)
+    .attr('stroke-dasharray', d => d.type === 'wikilink' ? '4,3' : 'none')
+    .attr('marker-end', d => `url(#arrow-${d.type})`);
+
+  const nodeSel = gNodes.selectAll('g.node').data(nodes, d => d.id);
+  nodeSel.exit().remove();
+
+  const nodeEnter = nodeSel.enter().append('g').attr('class','node')
+    .style('cursor','pointer')
+    .call(d3.drag()
+      .on('start', (e,d) => { if (!e.active) simulation.alphaTarget(.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag',  (e,d) => { d.fx=e.x; d.fy=e.y; })
+      .on('end',   (e,d) => { if (!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }))
+    .on('mouseover', showTooltip)
+    .on('mouseout',  hideTooltip);
+
+  nodeEnter.append('circle')
+    .attr('r', d => d.is_hub ? 16 : 9)
+    .attr('fill', d => nodeColor(d))
+    .attr('fill-opacity', .85)
+    .attr('stroke', d => nodeColor(d))
+    .attr('stroke-width', 2)
+    .attr('stroke-opacity', .4);
+
+  nodeEnter.append('text')
+    .attr('dy', d => d.is_hub ? -20 : -13)
+    .attr('text-anchor','middle')
+    .attr('font-family','monospace')
+    .attr('font-size', d => d.is_hub ? 9 : 7.5)
+    .attr('fill', d => nodeColor(d))
+    .attr('fill-opacity', .8)
+    .text(d => d.label.length > 18 ? d.label.slice(0,17)+'…' : d.label);
+
+  simulation.nodes(nodes).on('tick', () => {
+    gLinks.selectAll('line')
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    gNodes.selectAll('g.node')
+      .attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+
+  simulation.force('link').links(links);
+  simulation.alpha(.5).restart();
+
+  document.getElementById('graph-title').textContent =
+    `Knowledge Graph — ${nodes.length} concepts · ${links.length} edges`;
+}
+
+function showTooltip(event, d) {
+  const tt = document.getElementById('node-tooltip');
+  document.getElementById('tt-title').textContent = d.label;
+  document.getElementById('tt-type').textContent = (d.type || 'concept') + ' · ' + (d.source || '');
+  document.getElementById('tt-body').textContent = d.body || '';
+  document.getElementById('tt-tags').innerHTML = (d.tags||[]).map(t =>
+    `<span class="tag-chip">${t}</span>`).join('');
+  tt.style.display = 'block';
+  tt.style.left = (event.offsetX + 12) + 'px';
+  tt.style.top  = (event.offsetY - 10) + 'px';
+}
+function hideTooltip() {
+  document.getElementById('node-tooltip').style.display = 'none';
+}
+
+// ══════════════════════════════════════════════════════
+// INGEST
+// ══════════════════════════════════════════════════════
+function addLog(text, cls) {
+  const area = document.getElementById('log-area');
+  const div = document.createElement('div');
+  div.className = 'log-entry ' + cls;
+  div.textContent = text;
+  area.appendChild(div);
+  area.scrollTop = area.scrollHeight;
+  logCount++;
+  document.getElementById('log-count').textContent = logCount + ' events';
+}
+
+function updateDocCard(source, count) {
+  docCounts[source] = count;
+  const cards = document.getElementById('doc-cards');
+  const id = 'doc-card-' + source;
+  let card = document.getElementById(id);
+  if (!card) {
+    cards.innerHTML = '';
+    card = document.createElement('div');
+    card.id = id;
+    card.className = 'doc-card';
+    card.style.borderLeftColor = SOURCE_COLORS[source] || '#555';
+    card.style.borderLeftWidth = '3px';
+    cards.appendChild(card);
+  }
+  const label = source.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+  card.innerHTML = `
+    <div class="doc-card-name">${source}.md</div>
+    <div class="doc-card-label">${label}</div>
+    <div class="doc-card-count">${count} concepts extracted</div>`;
+  card.classList.add('active');
+  document.getElementById('stat-docs').textContent = Object.keys(docCounts).length;
+}
+
+async function startIngest() {
+  const btn = document.getElementById('ingest-btn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Ingesting…';
+  nodes = []; links = []; nodeMap = {}; docCounts = {};
+  logCount = 0;
+  document.getElementById('log-area').innerHTML = '';
+  document.getElementById('doc-cards').innerHTML = '';
+  document.getElementById('stat-nodes').textContent = '0';
+  document.getElementById('stat-edges').textContent = '0';
+  document.getElementById('stat-cross').textContent = '0';
+  document.getElementById('stat-docs').textContent = '0';
+  if (!simulation) initGraph(); else updateGraph();
+
+  const es = new EventSource(API + '/api/ingest');
+
+  es.addEventListener('start', e => {
+    const d = JSON.parse(e.data);
+    addLog(`📚 Starting ingestion — ${d.total_docs} documents`, 'doc');
+  });
+
+  es.addEventListener('doc_start', e => {
+    const d = JSON.parse(e.data);
+    addLog(`⚙️  Processing ${d.filename} (${d.chars.toLocaleString()} chars)`, 'doc');
+    updateDocCard(d.source, 0);
+  });
+
+  es.addEventListener('concept', e => {
+    const d = JSON.parse(e.data);
+    addLog(`✓ ${d.label} [${d.type}]`, 'concept');
+
+    // add node
+    if (!nodeMap[d.slug]) {
+      const node = {id: d.slug, label: d.label, type: d.type, source: d.source, tags: d.tags, body: d.body};
+      nodes.push(node);
+      nodeMap[d.slug] = node;
+      updateGraph();
+    }
+
+    document.getElementById('stat-nodes').textContent = nodes.length;
+    document.getElementById('corpus-badge').textContent = nodes.length + ' concepts indexed';
+    document.getElementById('corpus-badge').style.color = 'var(--green)';
+
+    const srcCount = nodes.filter(n => n.source === d.source).length;
+    updateDocCard(d.source, srcCount);
+  });
+
+  es.addEventListener('edge', e => {
+    const d = JSON.parse(e.data);
+    if (nodeMap[d.source] && nodeMap[d.target]) {
+      links.push({source: d.source, target: d.target, type: d.type});
+      addLog(`🔗 ${d.type}: ${d.source.split('--')[1]} → ${d.target.split('--')[1]}`, 'edge');
+      updateGraph();
+      document.getElementById('stat-edges').textContent = links.length;
+      const cross = links.filter(l => l.type === 'cross_doc').length;
+      document.getElementById('stat-cross').textContent = cross;
+    }
+  });
+
+  es.addEventListener('done', e => {
+    const d = JSON.parse(e.data);
+    addLog(`✅ Done — ${d.total} concepts ingested`, 'done');
+    btn.disabled = false;
+    btn.textContent = '↺ Re-ingest';
+    es.close();
+  });
+
+  es.addEventListener('error', e => {
+    try {
+      const d = JSON.parse(e.data);
+      addLog(`❌ Error: ${d.message}`, 'err');
+    } catch { addLog('❌ Connection error', 'err'); }
+    btn.disabled = false;
+    btn.textContent = '▶ Ingest Source Documents';
+    es.close();
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// QUERY
+// ══════════════════════════════════════════════════════
+function setQuery(el) {
+  document.getElementById('query-input').value = el.textContent.trim();
+}
+
+function resetQuery() {
+  document.getElementById('pipeline-display').innerHTML = `
+    <div style="font-family:var(--mono);font-size:9px;color:var(--muted2);text-align:center;padding:20px 0">
+      Run a query to see the pipeline in action.<br/>Each stage will appear here.
+    </div>`;
+  document.getElementById('query-status').textContent = 'idle';
+  // clear enrichment edges from graph
+  links = links.filter(l => l.type !== 'enrichment');
+  gNodes.selectAll('g.node circle').attr('stroke-width', 2).attr('stroke-opacity', .4);
+  updateGraph();
+}
+
+function addPipeStep(id, icon, name, detail, cls) {
+  const display = document.getElementById('pipeline-display');
+  let el = document.getElementById('pipe-' + id);
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'pipe-' + id;
+    el.className = 'pipe-step';
+    display.appendChild(el);
+  }
+  el.className = 'pipe-step ' + (cls || '');
+  el.innerHTML = `
+    <div class="pipe-step-header">
+      <span class="pipe-step-icon">${icon}</span>
+      <span class="pipe-step-name" style="color:${cls.includes('green') ? 'var(--green)' : cls.includes('amber') ? 'var(--amber)' : cls.includes('purple') ? 'var(--purple)' : 'var(--accent)'}">${name}</span>
+    </div>
+    <div class="pipe-step-detail">${detail}</div>`;
+  return el;
+}
+
+function highlightNodes(slugs, color) {
+  gNodes.selectAll('g.node circle')
+    .attr('stroke', d => slugs.includes(d.id) ? color : nodeColor(d))
+    .attr('stroke-width', d => slugs.includes(d.id) ? 4 : 2)
+    .attr('stroke-opacity', d => slugs.includes(d.id) ? 1 : .4);
+}
+
+async function runQuery() {
+  const q = document.getElementById('query-input').value.trim();
+  if (!q) return;
+
+  const btn = document.getElementById('query-btn');
+  btn.disabled = true;
+  document.getElementById('query-status').textContent = 'running…';
+  document.getElementById('pipeline-display').innerHTML = '';
+
+  // reset graph highlights
+  links = links.filter(l => l.type !== 'enrichment');
+  gNodes.selectAll('g.node circle').attr('stroke', d => nodeColor(d)).attr('stroke-width', 2).attr('stroke-opacity', .4);
+  updateGraph();
+
+  // step placeholders
+  addPipeStep('route',    '🔀', 'SLM Router',         '<span class="pulsing">Mistral-7B classifying query…</span>', 'active');
+  addPipeStep('retrieve', '📄', 'Retrieval',           'Waiting…', '');
+  addPipeStep('enrich',   '🔗', 'Wikilink Enrichment', 'Waiting…', '');
+  addPipeStep('generate', '💬', 'Generation',          'Waiting…', '');
+
+  try {
+    const res = await fetch(API + '/api/query', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({question: q})
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (data.error) {
+      addPipeStep('route', '❌', 'Error', data.error, '');
+      btn.disabled = false;
+      document.getElementById('query-status').textContent = 'error';
+      return;
+    }
+
+    // ROUTE step
+    const path = data.path || 'HYBRID_RETRIEVAL';
+    const isFallback = data.fallback;
+    const pathLabel = path.includes('FALLBACK') ? '📁 IN_CORPUS → 🔀 HYBRID FALLBACK' :
+                      path === 'IN_CORPUS' ? '📁 IN_CORPUS — direct load' : '🔀 HYBRID — BM25 + BGE-M3 + RRF';
+    const routeStep = addPipeStep('route', '🔀', 'SLM Router', `
+      <strong style="color:var(--green)">${pathLabel}</strong><br/>
+      <span style="color:var(--muted2)">${data.sources?.length || 0} sources selected · ${data.latency_s}s total</span>
+    `, 'done-green');
+
+    // RETRIEVE step
+    const retrieved = (data.sources || []).filter(s => s.via !== 'wikilink_enrichment');
+    const enriched  = (data.sources || []).filter(s => s.via === 'wikilink_enrichment');
+    const retrievedSlugs = retrieved.map(s => s.slug);
+
+    let retrieveDetail = retrieved.map(s => {
+      const scoreStr = s.rrf_score != null ? `rrf ${s.rrf_score}` : `score ${s.score}`;
+      const color = SOURCE_COLORS[s.source] || '#aaa';
+      return `<span class="source-chip" style="background:rgba(0,0,0,.3);color:${color};border:1px solid ${color}33">${s.title} · ${scoreStr}</span>`;
+    }).join('');
+    addPipeStep('retrieve', '📄', 'Retrieval', `
+      <div>${retrieved.length} concepts retrieved</div>
+      <div class="pipe-step-chips">${retrieveDetail}</div>
+    `, 'done-amber');
+
+    highlightNodes(retrievedSlugs, 'var(--amber)');
+
+    // ENRICH step
+    if (enriched.length > 0) {
+      const enrichedSlugs = enriched.map(s => s.slug);
+      let enrichDetail = enriched.map(s => {
+        const color = SOURCE_COLORS[s.source] || '#aaa';
+        return `<span class="source-chip" style="background:rgba(0,0,0,.3);color:${color};border:1px solid ${color}33">
+          🔗 ${s.title} ← ${s.enriched_from?.split('--')[1] || '?'}</span>`;
+      }).join('');
+      addPipeStep('enrich', '🔗', 'Wikilink Enrichment', `
+        <div>${enriched.length} connected concepts pulled via wikilinks</div>
+        <div class="pipe-step-chips">${enrichDetail}</div>
+      `, 'done-purple');
+
+      // add enrichment edges to graph
+      enriched.forEach(e => {
+        if (e.enriched_from && nodeMap[e.slug] && nodeMap[e.enriched_from]) {
+          links.push({source: e.enriched_from, target: e.slug, type: 'enrichment'});
+        }
+      });
+      highlightNodes([...retrievedSlugs, ...enrichedSlugs], 'var(--green)');
+      enrichedSlugs.forEach(s => {
+        const node = gNodes.selectAll('g.node circle').filter(d => d.id === s);
+        node.attr('stroke', 'var(--purple)').attr('stroke-width', 3);
+      });
+      updateGraph();
+    } else {
+      addPipeStep('enrich', '🔗', 'Wikilink Enrichment',
+        'No linked concepts found for these results.', 'done-purple');
+    }
+
+    // GENERATE step
+    const totalSources = (data.sources || []).length;
+    addPipeStep('generate', '💬', 'Answer', `
+      <div class="answer-label">ANSWER</div>
+      <div class="answer-box">${data.answer || '—'}</div>
+      <div class="metrics-row">
+        <span class="metric">⏱ ${data.latency_s}s</span>
+        <span class="metric">📄 ${totalSources} sources (${enriched.length} enriched)</span>
+        <span class="metric">${isFallback ? '⚠️ fallback triggered' : '✓ direct path'}</span>
+      </div>
+    `, 'done-green');
+
+    document.getElementById('query-status').textContent = 'done · ' + data.latency_s + 's';
+
+  } catch(err) {
+    addPipeStep('route', '❌', 'Error', err.message, '');
+    document.getElementById('query-status').textContent = 'error';
+  }
+
+  btn.disabled = false;
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+window.addEventListener('load', () => {
+  initGraph();
+  // try to load existing corpus
+  fetch(API + '/api/corpus').then(r => r.json()).then(data => {
+    if (data.total > 0) {
+      data.nodes.forEach(n => {
+        nodes.push({id: n.id, label: n.label, type: n.type, source: n.source, tags: n.tags, body: n.body});
+        nodeMap[n.id] = nodes[nodes.length-1];
+      });
+      data.edges.forEach(e => links.push({source: e.source, target: e.target, type: e.type}));
+      updateGraph();
+      document.getElementById('stat-nodes').textContent = nodes.length;
+      document.getElementById('stat-edges').textContent = links.length;
+      document.getElementById('stat-cross').textContent = links.filter(l => l.type==='cross_doc').length;
+      document.getElementById('corpus-badge').textContent = nodes.length + ' concepts indexed';
+      document.getElementById('corpus-badge').style.color = 'var(--green)';
+
+      const sources = [...new Set(nodes.map(n => n.source))];
+      document.getElementById('stat-docs').textContent = sources.length;
+      sources.forEach(src => {
+        updateDocCard(src, nodes.filter(n => n.source === src).length);
+      });
+    }
+  }).catch(() => {});
+});
+</script>
+</body>
+</html>
