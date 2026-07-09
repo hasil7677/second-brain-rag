@@ -110,3 +110,7 @@ Hit **Ingest Source Documents** first, then query.
 Andrej Karpathy put it well: *"Obsidian is the IDE, the LLM is the programmer, the wiki is the codebase."* This is that, with an insurance underwriting corpus as the wiki.
 
 Google formalised the same format as OKF (Open Knowledge Format) — markdown + YAML frontmatter + wikilinks + a type field. We implement the same spec from scratch, no Google tooling needed at this scale.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
