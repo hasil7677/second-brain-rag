@@ -1,0 +1,4 @@
+﻿# Vue/HTML files here are the demo UI, not the substance of the project.
+# Without this GitHub labels the repo `HTML` instead of `Python`.
+*.html linguist-detectable=false
+
